@@ -3,206 +3,185 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Live MCQ OMR Scanner</title>
+<title>Mobile OMR Scanner</title>
 <style>
   body { font-family: system-ui, -apple-system, Roboto, Arial; margin:0; padding:0; background:#f4f7fb; color:#111827; }
-  header { background:#1f6feb; color:white; padding:1rem 2rem; display:flex; justify-content:space-between; align-items:center; }
+  header { background:#1f6feb; color:white; padding:1rem 1rem; text-align:center; }
   header h1 { margin:0; font-size:1.3rem; }
-  .container { max-width:900px; background:white; margin:2rem auto; padding:2rem; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.05); }
-  h2 { border-bottom:2px solid #e5e7eb; padding-bottom:4px; }
-  label { font-weight:600; margin-top:12px; display:block; }
-  input, select { width:100%; padding:8px; margin-top:4px; border:1px solid #cbd5e1; border-radius:6px; }
-  button { background:#1f6feb; color:white; padding:10px 14px; border:none; border-radius:6px; cursor:pointer; font-weight:600; margin-top:10px; }
+  .container { max-width: 600px; margin: 1rem auto; background:white; padding:1rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); }
+  label { font-weight:600; display:block; margin-top:10px; }
+  input, select, button { width:100%; padding:10px; margin-top:5px; border-radius:6px; border:1px solid #cbd5e1; font-size:1rem; }
+  button { background:#1f6feb; color:white; border:none; cursor:pointer; }
   button:hover { background:#155ab6; }
-  .answers input { width:60px; text-transform:uppercase; text-align:center; margin-right:6px; margin-bottom:6px; }
   .row { display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
-  #results { margin-top:20px; background:#f9fafb; padding:10px; border-radius:8px; }
-  .score { font-weight:bold; color:#1f6feb; }
-  .video-container { position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:12px; overflow:hidden; margin-top:15px; }
-  video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
-  .scan-frame { position:absolute; top:50%; left:50%; width:70%; aspect-ratio:1/1.414; transform:translate(-50%,-50%); border:4px solid #1f6feb; border-radius:8px; pointer-events:none; }
-  .scan-text { position:absolute; bottom:8%; width:100%; text-align:center; color:white; font-weight:600; text-shadow:1px 1px 3px rgba(0,0,0,0.7); }
-  canvas { display:none; }
-  #errorMsg { color:red; margin-top:10px; }
+  #cameraWrapper { position:relative; width:100%; border:2px dashed #1f6feb; border-radius:12px; overflow:hidden; margin-top:1rem; }
+  video, canvas { width:100%; height:auto; display:block; object-fit:contain; }
+  #a4Overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; border:2px dashed #1f6feb; }
+  table { width:100%; border-collapse: collapse; margin-top:10px; }
+  table, th, td { border:1px solid #cbd5e1; }
+  th, td { padding:6px; text-align:center; }
+  .score { font-weight:bold; color:#1f6feb; margin-top:10px; text-align:center; }
 </style>
 </head>
 <body>
-
-<header>
-  <h1>Live MCQ OMR Scanner</h1>
-</header>
-
+<header><h1>Mobile OMR Scanner</h1></header>
 <div class="container">
 
-  <h2>Answer Key Setup</h2>
-  <label>Number of Questions:</label>
-  <input type="number" id="numQuestions" min="1" max="100" value="5">
-  <button id="generateBtn">Generate Correct Answer Inputs</button>
-  <div id="answerInputs" class="answers"></div>
+<h2>Answer Key Setup</h2>
+<label>Number of Questions:</label>
+<input type="number" id="numQuestions" min="1" max="100" value="5">
+<button id="generateBtn">Generate Answer Inputs</button>
+<div id="answerInputs"></div>
 
-  <h2>Live OMR Scan (A4 Frame)</h2>
-  <p>Align the A4 OMR sheet fully inside the blue frame below for accurate scanning.</p>
-
-  <div class="video-container">
-    <video id="video" autoplay playsinline muted></video>
-    <div class="scan-frame"></div>
-    <div class="scan-text">Align your A4 OMR sheet within the frame</div>
-  </div>
-
-  <div id="errorMsg"></div>
-
-  <button id="startCamera">Start Camera</button>
-  <button id="capture">Capture & Scan</button>
-
-  <div id="results"></div>
+<h2>Live Camera / Snap OMR</h2>
+<div id="cameraWrapper">
+  <video id="video" autoplay playsinline></video>
   <canvas id="omrCanvas"></canvas>
-
+  <div id="a4Overlay"></div>
 </div>
 
-<script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
-<script>
-let correctAnswers = [];
-let studentData = {};
-const video = document.getElementById('video');
-const omrCanvas = document.getElementById('omrCanvas');
-const ctx = omrCanvas.getContext('2d');
-const resultsDiv = document.getElementById('results');
-const errorMsg = document.getElementById('errorMsg');
-const generateBtn = document.getElementById('generateBtn');
-const answerInputs = document.getElementById('answerInputs');
+<button id="snapBtn">Snap & Detect Sheet</button>
+<button id="analyzeBtn">Analyze OMR</button>
 
-// --- Generate answer key inputs ---
-generateBtn.addEventListener('click', () => {
-  const n = parseInt(document.getElementById('numQuestions').value);
-  answerInputs.innerHTML = '';
-  for (let i = 1; i <= n; i++) {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = `<label>Q${i}:</label><input type="text" maxlength="1" id="ans${i}" placeholder="A-D">`;
-    answerInputs.appendChild(row);
+<div id="results"></div>
+
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+<script>
+let video=document.getElementById('video');
+let canvas=document.getElementById('omrCanvas');
+let ctx=canvas.getContext('2d');
+let snapBtn=document.getElementById('snapBtn');
+let analyzeBtn=document.getElementById('analyzeBtn');
+let resultsDiv=document.getElementById('results');
+let correctAnswers=[];
+let warped=null;
+
+// Generate answer inputs
+document.getElementById('generateBtn').addEventListener('click', ()=>{
+  const n=parseInt(document.getElementById('numQuestions').value);
+  correctAnswers=[];
+  const container=document.getElementById('answerInputs');
+  container.innerHTML='';
+  for(let i=1;i<=n;i++){
+    const row=document.createElement('div'); row.className='row';
+    row.innerHTML=`<label>Q${i}:</label><input type="text" maxlength="1" id="ans${i}" placeholder="A-D">`;
+    container.appendChild(row);
   }
 });
 
-async function startCamera() {
-  try {
-    let constraints;
-    const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-      constraints = { video: { facingMode: "environment" }, audio: false };
-    } else {
-      constraints = { video: true, audio: false }; // laptop default webcam
-    }
+// Open mobile camera
+navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+.then(stream=>{video.srcObject=stream;})
+.catch(err=>{alert("Camera access required: "+err);});
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = stream;
+// Snap & detect sheet
+snapBtn.addEventListener('click', ()=>{
+  canvas.width=video.videoWidth;
+  canvas.height=video.videoHeight;
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-    // If using front camera on laptop or mobile (for preview), flip horizontally
-    if (!isMobile) {
-      video.style.transform = "scaleX(-1)";
-    } else {
-      video.style.transform = "none";
-    }
+  // Use OpenCV to detect sheet and warp
+  const src=cv.imread(canvas);
+  const gray=new cv.Mat(); cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
+  const blur=new cv.Mat(); cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);
+  const edges=new cv.Mat(); cv.Canny(blur,edges,75,200);
 
-    await video.play();
-  } catch (err) {
-    alert("Camera access required: " + err);
-  }
-}
-document.getElementById('startCamera').addEventListener('click', startCamera);
+  const contours=new cv.MatVector(); const hierarchy=new cv.Mat();
+  cv.findContours(edges,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
 
-// --- Detect bubbles using OpenCV contour method ---
-function detectOMRAnswers(canvas, numQuestions) {
-  const src = cv.imread(canvas);
-  const gray = new cv.Mat(), blur = new cv.Mat(), thresh = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0);
-  cv.adaptiveThreshold(blur, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 10);
-
-  const contours = new cv.MatVector();
-  const hierarchy = new cv.Mat();
-  cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-  let bubbles = [];
-  for (let i=0;i<contours.size();i++){
-    const cnt = contours.get(i);
-    const rect = cv.boundingRect(cnt);
-    const aspect = rect.width/rect.height;
-    const area = rect.width*rect.height;
-    if(aspect>0.7 && aspect<1.3 && area>200 && area<2000) {
-      bubbles.push({x:rect.x+rect.width/2, y:rect.y+rect.height/2, rect});
+  let maxArea=0; let sheet=null;
+  for(let i=0;i<contours.size();i++){
+    const cnt=contours.get(i);
+    const peri=cv.arcLength(cnt,true);
+    const approx=new cv.Mat(); cv.approxPolyDP(cnt,approx,0.02*peri,true);
+    if(approx.rows===4){
+      const area=cv.contourArea(approx);
+      if(area>maxArea){ maxArea=area; sheet=approx; }
     }
     cnt.delete();
   }
 
-  // Sort by y, group rows
+  if(sheet){
+    let pts=[]; for(let i=0;i<4;i++){ pts.push({x:sheet.intPtr(i,0)[0],y:sheet.intPtr(i,0)[1]}); }
+    pts.sort((a,b)=>a.y-b.y); let top=[pts[0],pts[1]].sort((a,b)=>a.x-b.x);
+    let bottom=[pts[2],pts[3]].sort((a,b)=>a.x-b.x);
+    let srcTri=cv.matFromArray(4,1,cv.CV_32FC2,[top[0].x,top[0].y, top[1].x,top[1].y, bottom[1].x,bottom[1].y, bottom[0].x,bottom[0].y]);
+    let dstTri=cv.matFromArray(4,1,cv.CV_32FC2,[0,0, canvas.width,0, canvas.width,canvas.height, 0,canvas.height]);
+    warped=new cv.Mat();
+    let M=cv.getPerspectiveTransform(srcTri,dstTri);
+    cv.warpPerspective(src,warped,M,new cv.Size(canvas.width,canvas.height));
+    cv.imshow(canvas,warped);
+    src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+  }else{ alert("OMR sheet not detected. Ensure good lighting and full sheet visible."); src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete(); }
+});
+
+// Detect bubbles & compare answers
+function detectOMRAnswers(mat,numQuestions){
+  const gray=new cv.Mat(); cv.cvtColor(mat,gray,cv.COLOR_RGBA2GRAY);
+  const blur=new cv.Mat(); cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);
+  const thresh=new cv.Mat(); cv.adaptiveThreshold(blur,thresh,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,31,10);
+  const contours=new cv.MatVector(); const hierarchy=new cv.Mat();
+  cv.findContours(thresh,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+
+  let bubbles=[];
+  for(let i=0;i<contours.size();i++){
+    const cnt=contours.get(i);
+    const rect=cv.boundingRect(cnt);
+    const aspect=rect.width/rect.height; const area=rect.width*rect.height;
+    if(aspect>0.7 && aspect<1.3 && area>200 && area<2000) bubbles.push({x:rect.x+rect.width/2, y:rect.y+rect.height/2, rect});
+    cnt.delete();
+  }
+
   bubbles.sort((a,b)=>a.y-b.y);
-  const grouped = [], yThreshold=20;
+  const grouped=[]; const yThresh=20;
   for(const b of bubbles){
     let found=false;
-    for(const g of grouped){
-      if(Math.abs(g[0].y - b.y)<yThreshold){ g.push(b); found=true; break; }
-    }
+    for(const g of grouped){ if(Math.abs(g[0].y-b.y)<yThresh){ g.push(b); found=true; break;} }
     if(!found) grouped.push([b]);
   }
   grouped.forEach(row=>row.sort((a,b)=>a.x-b.x));
 
-  const answers = [];
-  const rows = Math.min(numQuestions, grouped.length);
+  const answers=[]; const rows=Math.min(numQuestions,grouped.length);
   for(let i=0;i<rows;i++){
-    const row = grouped[i], shades=[];
+    const row=grouped[i]; let shades=[];
     for(let j=0;j<row.length;j++){
-      const r=row[j].rect;
-      const roi = thresh.roi(r);
-      const filled = cv.countNonZero(roi);
-      shades.push({idx:j, fill:filled/(r.width*r.height)});
-      roi.delete();
+      const r=row[j].rect; const roi=thresh.roi(r);
+      const fill=cv.countNonZero(roi)/(r.width*r.height);
+      shades.push({idx:j,fill}); roi.delete();
     }
-    const maxFill = Math.max(...shades.map(s=>s.fill));
-    const marked = shades.filter(s=>s.fill>maxFill*0.8);
-    if(marked.length===0) answers.push('None');
-    else if(marked.length>1) answers.push('Multiple');
-    else answers.push(['A','B','C','D'][marked[0].idx]||'?');
+    const maxFill=Math.max(...shades.map(s=>s.fill));
+    const marked=shades.filter(s=>s.fill>maxFill*0.8);
+    if(marked.length===0) answers.push("None");
+    else if(marked.length>1) answers.push("Multiple");
+    else answers.push(["A","B","C","D"][marked[0].idx]||"?");
   }
 
-  src.delete(); gray.delete(); blur.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+  gray.delete(); blur.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
   return answers;
 }
 
-// --- Capture frame and scan ---
-document.getElementById('capture').addEventListener('click', ()=>{
-  const n = parseInt(document.getElementById('numQuestions').value);
-  correctAnswers = [];
+analyzeBtn.addEventListener('click',()=>{
+  if(!warped){ alert("Snap OMR sheet first"); return;}
+  const n=parseInt(document.getElementById('numQuestions').value);
+  correctAnswers=[];
   for(let i=1;i<=n;i++){
-    const val=document.getElementById('ans'+i).value.trim().toUpperCase();
-    if(!val.match(/^[A-D]$/)){ alert('Enter valid answers A-D for all questions.'); return; }
+    const val=document.getElementById('ans'+i)?.value.trim().toUpperCase();
+    if(!val.match(/^[A-D]$/)){ alert("Enter valid answers A-D"); return;}
     correctAnswers.push(val);
   }
 
-  // Capture current frame
-  omrCanvas.width = video.videoWidth;
-  omrCanvas.height = video.videoHeight;
-  ctx.drawImage(video,0,0,omrCanvas.width,omrCanvas.height);
-
-  const detected = detectOMRAnswers(omrCanvas, n);
-  let correctCount=0;
-  const details = [];
-
+  const detected=detectOMRAnswers(warped,n);
+  let score=0; let details=[];
   for(let i=0;i<n;i++){
-    let studentAns = detected[i], status='❌', displayAns=studentAns;
-    if(studentAns==='None') displayAns='No mark';
-    else if(studentAns==='Multiple') displayAns='Double mark';
-    else if(studentAns===correctAnswers[i]){ status='✅'; correctCount++; }
-
-    details.push(`<tr>
-      <td>${i+1}</td><td>${displayAns}</td><td>${correctAnswers[i]}</td><td>${status}</td>
-    </tr>`);
+    let stu=detected[i]; let status="❌";
+    if(stu===correctAnswers[i]){ status="✅"; score++; }
+    details.push(`<tr><td>${i+1}</td><td>${stu}</td><td>${correctAnswers[i]}</td><td>${status}</td></tr>`);
   }
-
-  resultsDiv.innerHTML = `<table border="1" cellspacing="0" cellpadding="6">
-    <tr><th>Q#</th><th>Detected</th><th>Correct</th><th>Status</th></tr>
-    ${details.join('')}
-    </table>
-    <p class="score">Total Score: ${correctCount} / ${n}</p>`;
+  resultsDiv.innerHTML=`<h3>Results</h3>
+    <table>
+    <tr><th>Q#</th><th>Student</th><th>Correct</th><th>Status</th></tr>
+    ${details.join("")}</table>
+    <p class="score">Score: ${score}/${n}</p>`;
 });
 </script>
 </body>
