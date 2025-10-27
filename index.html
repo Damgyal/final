@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mobile OMR Scanner (AI Enhanced)</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mobile OMR Scanner (Improved)</title>
 <style>
   body { font-family: system-ui, -apple-system, Roboto, Arial; margin:0; padding:0; background:#f4f7fb; color:#111827; }
   header { background:#1f6feb; color:white; padding:1rem; text-align:center; }
@@ -24,12 +24,12 @@
 </style>
 </head>
 <body>
-<header><h1>Mobile OMR Scanner (AI Enhanced)</h1></header>
+<header><h1>Mobile OMR Scanner (Improved)</h1></header>
 <div class="container">
 
 <h2>Answer Key Setup</h2>
 <label>Number of Questions:</label>
-<input type="number" id="numQuestions" min="1" max="100" value="5">
+<input type="number" id="numQuestions" min="1" max="200" value="5">
 <button id="generateBtn">Generate Answer Inputs</button>
 <div id="answerInputs"></div>
 
@@ -41,163 +41,347 @@
 </div>
 
 <button id="snapBtn">Snap & Detect Sheet</button>
-<button id="analyzeBtn">Analyze OMR (AI)</button>
+<button id="analyzeBtn">Analyze OMR</button>
 
 <div id="results"></div>
 
-<!-- Libraries -->
 <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
-
 <script>
-let video=document.getElementById('video');
-let canvas=document.getElementById('omrCanvas');
-let ctx=canvas.getContext('2d');
-let snapBtn=document.getElementById('snapBtn');
-let analyzeBtn=document.getElementById('analyzeBtn');
-let resultsDiv=document.getElementById('results');
-let correctAnswers=[];
-let warped=null;
+let video = document.getElementById('video');
+let canvas = document.getElementById('omrCanvas');
+let ctx = canvas.getContext('2d');
+let snapBtn = document.getElementById('snapBtn');
+let analyzeBtn = document.getElementById('analyzeBtn');
+let resultsDiv = document.getElementById('results');
+let correctAnswers = [];
+let warped = null;
 
-// 1️⃣ Camera setup
-navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
-.then(stream=>{video.srcObject=stream;})
-.catch(err=>{alert("Camera access required: "+err);});
-
-// 2️⃣ Generate Answer Inputs
+// Generate answer inputs
 document.getElementById('generateBtn').addEventListener('click', ()=>{
-  const n=parseInt(document.getElementById('numQuestions').value);
-  correctAnswers=[];
-  const container=document.getElementById('answerInputs');
-  container.innerHTML='';
+  const n = parseInt(document.getElementById('numQuestions').value);
+  correctAnswers = [];
+  const container = document.getElementById('answerInputs');
+  container.innerHTML = '';
   for(let i=1;i<=n;i++){
-    const row=document.createElement('div'); row.className='row';
-    row.innerHTML=`<label>Q${i}:</label><input type="text" maxlength="1" id="ans${i}" placeholder="A-D">`;
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label>Q${i}:</label><input type="text" maxlength="1" id="ans${i}" placeholder="A-D">`;
     container.appendChild(row);
   }
 });
 
-// 3️⃣ Snap sheet and perspective correction
+// Open mobile camera
+navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+.then(stream => { video.srcObject = stream; })
+.catch(err => { alert("Camera access required: " + err); });
+
+// --- Snap & perspective warp (kept mostly same) ---
 snapBtn.addEventListener('click', ()=>{
-  canvas.width=video.videoWidth;
-  canvas.height=video.videoHeight;
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  if (!video.videoWidth || !video.videoHeight) { alert("Camera not ready"); return; }
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const src=cv.imread(canvas);
-  const gray=new cv.Mat(); cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
-  const blur=new cv.Mat(); cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);
-  const edges=new cv.Mat(); cv.Canny(blur,edges,50,180);
+  const src = cv.imread(canvas);
+  const gray = new cv.Mat(); cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  const blur = new cv.Mat(); cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0);
+  const edges = new cv.Mat(); cv.Canny(blur, edges, 50, 180);
 
-  const contours=new cv.MatVector(), hierarchy=new cv.Mat();
-  cv.findContours(edges,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+  const contours = new cv.MatVector(), hierarchy = new cv.Mat();
+  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-  let maxArea=0, sheet=null;
-  for(let i=0;i<contours.size();i++){
-    const cnt=contours.get(i);
-    const peri=cv.arcLength(cnt,true);
-    const approx=new cv.Mat(); cv.approxPolyDP(cnt,approx,0.02*peri,true);
-    if(approx.rows===4){
-      const area=cv.contourArea(approx);
-      if(area>maxArea){ maxArea=area; sheet=approx; }
+  let maxArea = 0, sheet = null;
+  for (let i=0; i<contours.size(); i++){
+    const cnt = contours.get(i);
+    const peri = cv.arcLength(cnt, true);
+    const approx = new cv.Mat(); cv.approxPolyDP(cnt, approx, 0.02*peri, true);
+    if (approx.rows === 4){
+      const area = cv.contourArea(approx);
+      if (area > maxArea){ maxArea = area; sheet = approx; }
     }
     cnt.delete();
   }
 
-  if(sheet){
-    let pts=[];
-    for(let i=0;i<4;i++){ pts.push({x:sheet.intPtr(i,0)[0],y:sheet.intPtr(i,0)[1]}); }
+  if (sheet){
+    let pts = [];
+    for (let i=0;i<4;i++){ pts.push({x: sheet.intPtr(i,0)[0], y: sheet.intPtr(i,0)[1]}); }
     pts.sort((a,b)=>a.y-b.y);
-    let top=[pts[0],pts[1]].sort((a,b)=>a.x-b.x);
-    let bottom=[pts[2],pts[3]].sort((a,b)=>a.x-b.x);
-    let srcTri=cv.matFromArray(4,1,cv.CV_32FC2,[top[0].x,top[0].y, top[1].x,top[1].y, bottom[1].x,bottom[1].y, bottom[0].x,bottom[0].y]);
-    let dstTri=cv.matFromArray(4,1,cv.CV_32FC2,[0,0,canvas.width,0,canvas.width,canvas.height,0,canvas.height]);
-    warped=new cv.Mat();
-    let M=cv.getPerspectiveTransform(srcTri,dstTri);
-    cv.warpPerspective(src,warped,M,new cv.Size(canvas.width,canvas.height));
-    cv.imshow(canvas,warped);
-  }else{
-    alert("OMR sheet not detected. Ensure good lighting and full visibility.");
+    let top = [pts[0], pts[1]].sort((a,b)=>a.x-b.x);
+    let bottom = [pts[2], pts[3]].sort((a,b)=>a.x-b.x);
+
+    let srcTri = cv.matFromArray(4,1,cv.CV_32FC2,[
+      top[0].x, top[0].y,
+      top[1].x, top[1].y,
+      bottom[1].x, bottom[1].y,
+      bottom[0].x, bottom[0].y
+    ]);
+    let dstTri = cv.matFromArray(4,1,cv.CV_32FC2,[
+      0,0,
+      canvas.width,0,
+      canvas.width,canvas.height,
+      0,canvas.height
+    ]);
+    warped = new cv.Mat();
+    let M = cv.getPerspectiveTransform(srcTri, dstTri);
+    cv.warpPerspective(src, warped, M, new cv.Size(canvas.width, canvas.height));
+    cv.imshow(canvas, warped);
+    srcTri.delete(); dstTri.delete(); M.delete();
+  } else {
+    alert("OMR sheet not detected. Ensure good lighting and full sheet visible.");
   }
 
   src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
 });
 
-// 4️⃣ AI Bubble Detector using TensorFlow.js
-async function detectOMRAnswersAI(mat,numQuestions){
-  const gray=new cv.Mat();
-  cv.cvtColor(mat,gray,cv.COLOR_RGBA2GRAY);
-  const blur=new cv.Mat();
-  cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);
-  const thresh=new cv.Mat();
-  cv.adaptiveThreshold(blur,thresh,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,31,10);
+// --- Improved AI-ish bubble detection (no external ML libs) ---
+// Notes:
+// - Will cluster columns by x-coordinate to discover columns
+// - If columns == choices+1, ignore the left-most cluster (question numbers)
+// - Calculate 'fill' using both binary fill and inverted grayscale mean, combined
+// - Prefer the single highest fill if it's sufficiently higher than others
+function clusterXPositions(xs, xTol){
+  // simple greedy clustering: xs sorted -> cluster contiguous within xTol
+  xs = xs.slice().sort((a,b)=>a-b);
+  const clusters = [];
+  for (const x of xs){
+    if (clusters.length === 0) { clusters.push([x]); continue; }
+    const last = clusters[clusters.length-1];
+    if (Math.abs(x - (last.reduce((s,v)=>s+v,0)/last.length)) <= xTol) last.push(x);
+    else clusters.push([x]);
+  }
+  // return cluster centers
+  return clusters.map(c => c.reduce((s,v)=>s+v,0)/c.length);
+}
 
-  const contours=new cv.MatVector(), hierarchy=new cv.Mat();
-  cv.findContours(thresh,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+function getColumnIndexForX(columnCenters, x){
+  let best = 0; let bestDist = Infinity;
+  for (let i=0;i<columnCenters.length;i++){
+    const d = Math.abs(columnCenters[i] - x);
+    if (d < bestDist){ bestDist = d; best = i; }
+  }
+  return best;
+}
 
-  let bubbles=[];
-  for(let i=0;i<contours.size();i++){
-    const cnt=contours.get(i);
-    const rect=cv.boundingRect(cnt);
-    const aspect=rect.width/rect.height; const area=rect.width*rect.height;
-    if(aspect>0.7 && aspect<1.3 && area>200 && area<2000)
-      bubbles.push({x:rect.x+rect.width/2, y:rect.y+rect.height/2, rect});
+function rectToSafe(r, mat){
+  // ensure rect inside mat
+  const x = Math.max(0, Math.min(r.x, mat.cols-1));
+  const y = Math.max(0, Math.min(r.y, mat.rows-1));
+  const w = Math.max(1, Math.min(r.width, mat.cols - x));
+  const h = Math.max(1, Math.min(r.height, mat.rows - y));
+  return new cv.Rect(x,y,w,h);
+}
+
+function computeFillMetrics(threshMat, grayMat, rect){
+  // returns combined fill metric [0..1]
+  const safeR = rectToSafe(rect, threshMat);
+  const roiThresh = threshMat.roi(safeR);
+  const nonZero = cv.countNonZero(roiThresh);
+  const binFill = nonZero / (safeR.width * safeR.height); // binary fill
+
+  // grayscale mean (darker -> more filled). We'll invert to get fill-like measure.
+  const roiGray = grayMat.roi(safeR);
+  // compute mean:
+  const meanScalar = cv.mean(roiGray);
+  const meanVal = meanScalar[0]; // 0=black,255=white
+  const invMean = Math.max(0, (255 - meanVal) / 255); // 0..1
+
+  roiThresh.delete(); roiGray.delete();
+  // combine binary and grayscale inversion (weights chosen to favor binary but keep small marks)
+  const combined = (0.65 * binFill) + (0.35 * invMean);
+  return {binFill, invMean, combined};
+}
+
+function uniqueBy(arr, keyFn){
+  const seen = new Set();
+  const out = [];
+  for (const a of arr){
+    const k = keyFn(a);
+    if (!seen.has(k)) { seen.add(k); out.push(a); }
+  }
+  return out;
+}
+
+function sortByX(a,b){ return a.x - b.x; }
+function sortByY(a,b){ return a.y - b.y; }
+
+function detectOMRAnswers(mat, numQuestions){
+  // mat is warped RGBA mat
+  // params scale with image size:
+  const imgW = mat.cols, imgH = mat.rows;
+  const xClusterTol = Math.max(12, Math.round(imgW * 0.02)); // px tolerance when clustering column centers
+  const yGroupTol = Math.max(16, Math.round(imgH * 0.012));  // px tolerance for grouping rows
+
+  // Preprocess
+  const gray = new cv.Mat(); cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+  const blur = new cv.Mat(); cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0);
+  const thresh = new cv.Mat(); 
+  cv.adaptiveThreshold(blur, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 10);
+
+  const contours = new cv.MatVector(), hierarchy = new cv.Mat();
+  cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  // collect candidate circular-ish contours
+  let candidates = [];
+  for (let i=0;i<contours.size();i++){
+    const cnt = contours.get(i);
+    const rect = cv.boundingRect(cnt);
+    const aspect = rect.width / rect.height;
+    const area = rect.width * rect.height;
+    // keep mostly-square small-ish boxes (tune ranges)
+    if (aspect > 0.6 && aspect < 1.6 && area > 120 && area < 18000) {
+      candidates.push({x: rect.x + rect.width/2, y: rect.y + rect.height/2, rect});
+    }
     cnt.delete();
   }
 
-  bubbles.sort((a,b)=>a.y-b.y);
-  const grouped=[]; const yThresh=20;
-  for(const b of bubbles){
-    let found=false;
-    for(const g of grouped){ if(Math.abs(g[0].y-b.y)<yThresh){ g.push(b); found=true; break; } }
-    if(!found) grouped.push([b]);
-  }
-  grouped.forEach(row=>row.sort((a,b)=>a.x-b.x));
+  // sort top->bottom
+  candidates.sort(sortByY);
 
-  // AI: Simulate bubble classification using TensorFlow.js
-  const answers=[];
-  for(let i=0;i<Math.min(numQuestions,grouped.length);i++){
-    const row=grouped[i];
-    let aiPredictions=[];
-    for(let j=0;j<row.length;j++){
-      const r=row[j].rect;
-      const roi=thresh.roi(r);
-      const tensor=tf.tensor(Array.from(roi.data),[r.height,r.width,1]).resizeBilinear([28,28]).div(255.0).expandDims(0);
-      const confidence=tf.tidy(()=>tensor.mean().dataSync()[0]); // simple simulated model
-      aiPredictions.push({idx:j,fill:confidence});
-      roi.delete(); tensor.dispose();
+  // group by rows using y proximity
+  const rows = [];
+  for (const c of candidates){
+    let placed = false;
+    for (const r of rows){
+      if (Math.abs(r[0].y - c.y) <= yGroupTol) { r.push(c); placed = true; break; }
     }
-    const maxFill=Math.max(...aiPredictions.map(a=>a.fill));
-    const marked=aiPredictions.filter(a=>a.fill>maxFill*0.8);
-    if(marked.length===0) answers.push("None");
-    else if(marked.length>1) answers.push("Multiple");
-    else answers.push(["A","B","C","D"][marked[0].idx]||"?");
+    if (!placed) rows.push([c]);
+  }
+  rows.forEach(r => r.sort(sortByX));
+
+  // collect all x centers to cluster into columns
+  const allXs = candidates.map(c=>c.x);
+  const columnCenters = clusterXPositions(allXs, xClusterTol);
+
+  // If we detect (choices + 1) columns in a row, then assume left-most column is question number and ignore it.
+  // Determine expected choices by examining the most common number of items per row.
+  const rowLengths = rows.map(r=>r.length);
+  const commonLen = rowLengths.sort((a,b)=>rowLengths.filter(x=>x===a).length - rowLengths.filter(x=>x===b).length).pop() || 0;
+  // Fallback expected choices: if commonLen >= 4, assume choices = commonLen (possible question-number included)
+  let expectedChoices = Math.min(4, commonLen); // prefer 4, but fallback to detected
+  if (commonLen >= 4) expectedChoices = commonLen; // temporary conservative approach
+
+  // If columnCenters suggests an extra left column, detect and mark skipLeftColumn
+  let skipLeftColumn = false;
+  if (columnCenters.length >= expectedChoices + 1) {
+    // left-most cluster center is likely question numbers
+    skipLeftColumn = true;
+  } else {
+    // alternative check: if each row has one extra left item (== expectedChoices+1)
+    const rowsWithExtra = rows.filter(r => r.length >= expectedChoices + 1).length;
+    if (rowsWithExtra >= Math.floor(rows.length * 0.6)) skipLeftColumn = true;
+  }
+
+  // Prepare answers
+  const answers = [];
+  // process at most numQuestions rows from top
+  let processedRows = 0;
+  for (let ri=0; ri<rows.length && processedRows < numQuestions; ri++){
+    const row = rows[ri];
+    // If row appears to have (choices + 1) columns and skipLeftColumn true, drop the left-most candidate(s)
+    let rowCells = row.slice(); // copy
+    if (skipLeftColumn && rowCells.length > 0) {
+      // Remove the cell that is closest to leftmost column center (or simply drop left-most)
+      // Safer: drop left-most by x
+      rowCells = rowCells.slice(1);
+    }
+
+    // If after dropping there are still more than 6 or fewer than 2, attempt to map by column centers:
+    if (rowCells.length < 2 || rowCells.length > 8){
+      // Try to remap by column centers: create empty slots for each center and place nearest cells
+      const mapped = new Array(columnCenters.length).fill(null);
+      for (const c of row){
+        const idx = getColumnIndexForX(columnCenters, c.x);
+        // ignore left-most column slot if skipping
+        if (skipLeftColumn && idx === 0) continue;
+        const targetIdx = skipLeftColumn ? (idx - 1) : idx;
+        if (targetIdx >= 0 && targetIdx < mapped.length) {
+          // choose the cell nearest to that column center
+          if (!mapped[targetIdx] || Math.abs(mapped[targetIdx].x - columnCenters[idx]) > Math.abs(c.x - columnCenters[idx])){
+            mapped[targetIdx] = c;
+          }
+        }
+      }
+      // compact mapped to consecutive cells
+      rowCells = mapped.filter(x=>x !== null);
+    }
+
+    // If rowCells is empty, push None and continue
+    if (rowCells.length === 0){
+      answers.push("None");
+      processedRows++;
+      continue;
+    }
+
+    // For each candidate in rowCells, compute combined fill metric
+    const fills = [];
+    for (let ci=0; ci<rowCells.length; ci++){
+      const r = rowCells[ci].rect;
+      const metrics = computeFillMetrics(thresh, gray, r);
+      fills.push({idx:ci, rect:r, binFill:metrics.binFill, invMean:metrics.invMean, combined:metrics.combined});
+    }
+
+    // Normalize combined fills to 0..1 by dividing by max
+    const combinedVals = fills.map(f=>f.combined);
+    const maxVal = Math.max(...combinedVals);
+    const sorted = fills.slice().sort((a,b)=>b.combined - a.combined);
+    const top = sorted[0];
+    const second = sorted[1] || {combined:0};
+
+    // Heuristics to decide selected bubble:
+    // - absolute minimum: very small marks should still be detected; set low absolute threshold scaled by image size
+    const absMin = Math.max(0.008, 0.0005 * (imgW * imgH) / (1000*1000)); // baseline small number ~0.008
+    // - if max is tiny -> None
+    if (top.combined < absMin){
+      answers.push("None");
+    } else {
+      // if top is sufficiently larger than second => single selected
+      if (top.combined >= (second.combined * 1.4 + 1e-9)) {
+        // choose the top index mapped to A,B,C...
+        const label = ["A","B","C","D","E","F","G","H"][top.idx] || "?";
+        answers.push(label);
+      } else {
+        // top and second close -> determine if both large enough -> Multiple else choose top
+        const bothLarge = (top.combined > absMin) && (second.combined > absMin);
+        if (bothLarge && Math.abs(top.combined - second.combined) <= (Math.max(0.01, 0.12 * Math.max(top.combined, second.combined)))) {
+          answers.push("Multiple");
+        } else {
+          // choose top as best guess
+          const label = ["A","B","C","D","E","F","G","H"][top.idx] || "?";
+          answers.push(label);
+        }
+      }
+    }
+
+    processedRows++;
   }
 
   gray.delete(); blur.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
   return answers;
 }
 
-// 5️⃣ Analyze and compare answers
-analyzeBtn.addEventListener('click', async ()=>{
+// Analyze button: read correct answers and call detectOMRAnswers
+analyzeBtn.addEventListener('click', ()=>{
   if(!warped){ alert("Snap OMR sheet first"); return; }
-  const n=parseInt(document.getElementById('numQuestions').value);
-  correctAnswers=[];
-  for(let i=1;i<=n;i++){
-    const val=document.getElementById('ans'+i)?.value.trim().toUpperCase();
-    if(!val.match(/^[A-D]$/)){ alert("Enter valid answers (A-D)."); return; }
+  const n = parseInt(document.getElementById('numQuestions').value);
+  correctAnswers = [];
+  for (let i=1;i<=n;i++){
+    const val = document.getElementById('ans'+i)?.value.trim().toUpperCase();
+    if (!val || !val.match(/^[A-Z]$/)) { alert("Enter valid answers A-Z for all questions"); return; }
     correctAnswers.push(val);
   }
 
-  const detected=await detectOMRAnswersAI(warped,n);
-  let score=0, details=[];
-  for(let i=0;i<n;i++){
-    let stu=detected[i]; let status="❌";
-    if(stu===correctAnswers[i]){ status="✅"; score++; }
-    details.push(`<tr><td>${i+1}</td><td>${stu}</td><td>${correctAnswers[i]}</td><td>${status}</td></tr>`);
+  const detected = detectOMRAnswers(warped, n);
+  let score = 0; let details = [];
+  for (let i=0;i<n;i++){
+    const stu = detected[i] || "None";
+    const correct = correctAnswers[i] || "?";
+    const status = (stu === correct) ? "✅" : "❌";
+    if (stu === correct) score++;
+    details.push(`<tr><td>${i+1}</td><td>${stu}</td><td>${correct}</td><td>${status}</td></tr>`);
   }
 
-  resultsDiv.innerHTML=`<h3>Results</h3>
-    <table><tr><th>Q#</th><th>Student</th><th>Correct</th><th>Status</th></tr>${details.join("")}</table>
+  resultsDiv.innerHTML = `<h3>Results</h3>
+    <table><tr><th>Q#</th><th>Student</th><th>Correct</th><th>Status</th></tr>
+    ${details.join("")}</table>
     <p class="score">Score: ${score}/${n}</p>`;
 });
 </script>
